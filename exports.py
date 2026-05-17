@@ -58,6 +58,14 @@ def write_pdf_report(
         )
         return t
 
+    def swot_table(title: str, items: list[str], width: float) -> Table:
+        rows = [["#", title]]
+        if items:
+            rows.extend([[index, item] for index, item in enumerate(items, start=1)])
+        else:
+            rows.append(["-", "Nenhum item informado."])
+        return table(rows, [1.2 * cm, width])
+
     def interpretation_table(rows: list[list[object]], widths: list[float], alert: bool = False) -> Table:
         wrapped_rows = [[paragraph(value, "Normal") for value in row] for row in rows]
         t = Table(wrapped_rows, colWidths=widths, repeatRows=1)
@@ -87,18 +95,29 @@ def write_pdf_report(
     story.append(paragraph(f"Data de geracao: {datetime.now().strftime('%d/%m/%Y %H:%M')}"))
     story.append(Spacer(1, 12))
 
-    story.append(paragraph("1. Estrutura SWOT", "Heading1"))
+    story.append(paragraph("1. Inputs SWOT informados", "Heading1"))
+    story.append(
+        paragraph(
+            "Os fatores abaixo foram informados como base da analise. Forcas e fraquezas representam o ambiente "
+            "interno; oportunidades e ameacas representam o ambiente externo."
+        )
+    )
+    story.append(Spacer(1, 6))
+    story.append(swot_table("Forcas", strengths, 14.5 * cm))
+    story.append(Spacer(1, 6))
+    story.append(swot_table("Fraquezas", weaknesses, 14.5 * cm))
+    story.append(Spacer(1, 6))
+    story.append(swot_table("Oportunidades", opportunities, 14.5 * cm))
+    story.append(Spacer(1, 6))
+    story.append(swot_table("Ameacas", threats, 14.5 * cm))
+    story.append(Spacer(1, 6))
     story.append(
         table(
             [
-                ["Grupo", "Quantidade", "Itens"],
-                ["Forcas", len(strengths), ", ".join(strengths)],
-                ["Fraquezas", len(weaknesses), ", ".join(weaknesses)],
-                ["Oportunidades", len(opportunities), ", ".join(opportunities)],
-                ["Ameacas", len(threats), ", ".join(threats)],
-                ["Avaliadores", len(evaluators), ", ".join(e.get("name", "") for e in evaluators)],
+                ["Avaliadores", "Quantidade"],
+                [", ".join(e.get("name", "") for e in evaluators) or "Nenhum avaliador informado.", len(evaluators)],
             ],
-            [3.2 * cm, 2.2 * cm, 10.5 * cm],
+            [12.5 * cm, 3.2 * cm],
         )
     )
     story.append(Spacer(1, 12))

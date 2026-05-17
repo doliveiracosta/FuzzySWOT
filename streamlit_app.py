@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import inspect
 import os
-from pathlib import Path
 from textwrap import dedent
 
 import pandas as pd
@@ -20,10 +18,9 @@ from fuzzyswot.core import (
     matrix_definitions,
     normalize_items,
 )
-from fuzzyswot.exports import pdf_bytes, write_pdf_report
+from fuzzyswot.exports import pdf_bytes
 from fuzzyswot.models import Evaluator, Project
 
-OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
 PDF_FILE_NAME = "relatorio_consultivo_fuzzy_swot.pdf"
 PUBLIC_MODE_VALUES = {"public", "cloud", "production"}
 STEPS = ["Projeto", "Itens SWOT", "Avaliadores", "Matrizes", "Consolidacao", "Exportacao"]
@@ -54,7 +51,6 @@ def init_state() -> None:
         "consensus": {},
         "rankings": {},
         "tows_strategies": pd.DataFrame(),
-        "last_pdf_path": "",
         "divergence_threshold_percent": 25,
         "current_step": 0,
         "notice": "",
@@ -411,32 +407,15 @@ def export_inputs() -> None:
         tows_strategies=st.session_state.tows_strategies,
     )
 
-    write_pdf_params = set(inspect.signature(write_pdf_report).parameters)
-    pdf_call_kwargs = {
-        key: value
-        for key, value in pdf_kwargs.items()
-        if key in write_pdf_params
-    }
-
     if public_mode:
         st.info("Modo publico: o PDF e entregue por download e nao e salvo no servidor.")
-    else:
-        if st.button("Gerar e salvar PDF nesta maquina", type="primary"):
-            OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-            pdf_path = OUTPUT_DIR / PDF_FILE_NAME
-            write_pdf_report(str(pdf_path), **pdf_call_kwargs)
-            st.session_state.last_pdf_path = str(pdf_path)
-            st.success("PDF gerado e salvo com sucesso.")
-
-        if st.session_state.last_pdf_path:
-            st.markdown("Arquivo salvo em:")
-            st.code(st.session_state.last_pdf_path)
 
     st.download_button(
         "Baixar PDF consultivo",
-        data=pdf_bytes(**pdf_call_kwargs),
+        data=pdf_bytes(**pdf_kwargs),
         file_name=PDF_FILE_NAME,
         mime="application/pdf",
+        type="primary",
     )
 
 
