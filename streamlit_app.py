@@ -10,8 +10,8 @@ from textwrap import dedent
 import pandas as pd
 import streamlit as st
 
-from fuzzyswot.constants import FUZZY_SCALE, HIERARCHY_WEIGHTS, TOWS_MATRIX_NAME
-from fuzzyswot.core import (
+from constants import FUZZY_SCALE, HIERARCHY_WEIGHTS, TOWS_MATRIX_NAME
+from core import (
     consolidate_matrices,
     default_matrix,
     fuzzy_color,
@@ -19,8 +19,8 @@ from fuzzyswot.core import (
     matrix_definitions,
     normalize_items,
 )
-from fuzzyswot.exports import pdf_bytes, write_pdf_report
-from fuzzyswot.models import Evaluator, Project
+from exports import pdf_bytes, write_pdf_report
+from models import Evaluator, Project
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
 PDF_FILE_NAME = "relatorio_consultivo_fuzzy_swot.pdf"
