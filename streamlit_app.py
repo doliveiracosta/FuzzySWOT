@@ -244,4 +244,169 @@ def matrix_inputs() -> None:
     evaluator_options = [Evaluator(**item).key for item in st.session_state.evaluators]
     evaluator_key = st.selectbox("Avaliador", evaluator_options)
     matrix_name = st.selectbox("Matriz", list(defs))
-    rows
+    rows, columns, description = defs[matrix_name]
+    st.caption(description)
+    render_fuzzy_scale()
+
+    matrix_key = (evaluator_key, matrix_name)
+    current = st.session_state.matrices.get(matrix_key, default_matrix(rows, columns))
+    current = current.reindex(index=rows, columns=columns).fillna(0.5).astype(float).clip(0.0, 1.0)
+
+    matrix_values = {}
+    for row in rows:
+        st.markdown(f"#### {row}")
+        matrix_values[row] = {}
+        for start in range(0, len(columns), 3):
+            chunk = columns[start : start + 3]
+            slider_columns = st.columns(len(chunk))
+            for layout_column, column in zip(slider_columns, chunk):
+                with layout_column:
+                    value = float(current.loc[row, column])
+                    score = st.slider(
+                        column,
+                        min_value=0.0,
+                        max_value=1.0,
+                        value=value,
+                        step=0.1,
+                        key=f"score_{stable_key(evaluator_key, matrix_name, row, column)}",
+                    )
+                    st.markdown(fuzzy_chip(score), unsafe_allow_html=True)
+                    matrix_values[row][column] = score
+
+    edited = pd.DataFrame.from_dict(matrix_values, orient="index", columns=columns).astype(float)
+
+    if st.button("Salvar matriz atual", type="primary"):
+        st.session_state.matrices[matrix_key] = edited.astype(float).clip(0.0, 1.0)
+        st.success("Matriz salva.")
+
+    with st.expander("Previa numerica da matriz"):
+        st.dataframe(edited, use_container_width=True)
+
+    if st.session_state.matrices:
+        summary = [
+            {"avaliador": evaluator, "matriz": matrix, "linhas": df.shape[0], "colunas": df.shape[1]}
+            for (evaluator, matrix), df in st.session_state.matrices.items()
+        ]
+        st.dataframe(pd.DataFrame(summary), use_container_width=True)
+
+
+def consolidation_inputs() -> None:
+    st.subheader("Consolidacao e consenso")
+    if not st.session_state.matrices:
+        st.warning("Preencha ao menos uma matriz antes de consolidar.")
+        return
+
+    matrix_names = sorted({matrix_name for _, matrix_name in st.session_state.matrices})
+    matrix_name = st.selectbox("Matriz para consolidar", matrix_names)
+    method_label = st.radio("Metodo", ["Media ponderada pela funcao hierarquica", "Media simples"])
+    threshold = st.slider("Limite de divergencia", min_value=0.05, max_value=1.0, value=0.25, step=0.05)
+
+    selected = {
+        evaluator: df
+        for (evaluator, current_matrix_name), df in st.session_state.matrices.items()
+        if current_matrix_name == matrix_name
+    }
+
+    if st.button("Consolidar", type="primary"):
+        result = consolidate_matrices(
+            selected,
+            evaluator_weights(),
+            matrix_name,
+            st.session_state.strengths,
+            st.session_state.weaknesses,
+            st.session_state.opportunities,
+            st.session_state.threats,
+            method="weighted" if method_label.startswith("Media ponderada") else "simple",
+            divergence_threshold=threshold,
+        )
+        st.session_state.consolidated[matrix_name] = result.consolidated
+        st.session_state.consensus[matrix_name] = result.consensus
+        st.session_state.rankings[matrix_name] = result.ranking
+        if matrix_name == TOWS_MATRIX_NAME:
+            st.session_state.tows_strategies = result.tows_strategies
+        st.success("Consolidacao realizada.")
+
+    if matrix_name in st.session_state.consolidated:
+        st.markdown("#### Pesos usados")
+        weights_df = pd.DataFrame(
+            [{"avaliador": evaluator, "peso": evaluator_weights().get(evaluator, 1.0)} for evaluator in selected]
+        )
+        st.dataframe(weights_df, use_container_width=True)
+        st.markdown("#### Matriz consolidada")
+        st.dataframe(st.session_state.consolidated[matrix_name], use_container_width=True)
+        st.markdown("#### Ranking")
+        st.dataframe(st.session_state.rankings[matrix_name], use_container_width=True)
+        st.markdown("#### Alerta de divergencia")
+        st.dataframe(st.session_state.consensus[matrix_name]["alerta"], use_container_width=True)
+        if matrix_name == TOWS_MATRIX_NAME and not st.session_state.tows_strategies.empty:
+            st.markdown("#### Estrategias TOWS")
+            st.dataframe(st.session_state.tows_strategies, use_container_width=True)
+
+
+def export_inputs() -> None:
+    st.subheader("Relatorio PDF")
+    public_mode = public_deployment_enabled()
+    pdf_kwargs = dict(
+        project=st.session_state.project,
+        evaluators=st.session_state.evaluators,
+        strengths=st.session_state.strengths,
+        weaknesses=st.session_state.weaknesses,
+        opportunities=st.session_state.opportunities,
+        threats=st.session_state.threats,
+        rankings=st.session_state.rankings,
+        tows_strategies=st.session_state.tows_strategies,
+    )
+
+    if public_mode:
+        st.info("Modo publico: o PDF e entregue por download e nao e salvo no servidor.")
+    else:
+        if st.button("Gerar e salvar PDF nesta maquina", type="primary"):
+            OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+            pdf_path = OUTPUT_DIR / PDF_FILE_NAME
+            write_pdf_report(str(pdf_path), **pdf_kwargs)
+            st.session_state.last_pdf_path = str(pdf_path)
+            st.success("PDF gerado e salvo com sucesso.")
+
+        if st.session_state.last_pdf_path:
+            st.markdown("Arquivo salvo em:")
+            st.code(st.session_state.last_pdf_path)
+
+    st.download_button(
+        "Baixar PDF consultivo",
+        data=pdf_bytes(**pdf_kwargs),
+        file_name=PDF_FILE_NAME,
+        mime="application/pdf",
+    )
+
+
+def main() -> None:
+    st.set_page_config(page_title="FuzzySWOT Strategy Prioritizer", layout="wide")
+    init_state()
+    public_mode = public_deployment_enabled()
+    st.title("FuzzySWOT Strategy Prioritizer")
+    st.caption("MVP web para priorizacao estrategica com logica fuzzy e matriz TOWS.")
+    if public_mode:
+        st.info(
+            "Esta versao publica nao possui login nem banco de dados. Evite inserir dados pessoais, "
+            "sigilosos ou informacoes sensiveis; use a ferramenta para fins academicos, demonstrativos "
+            "e exploratorios."
+        )
+
+    tabs = st.tabs(["Projeto", "Itens SWOT", "Avaliadores", "Matrizes", "Consolidacao", "Exportacao"])
+    with tabs[0]:
+        project_inputs()
+    with tabs[1]:
+        swot_inputs()
+    with tabs[2]:
+        evaluator_inputs()
+    with tabs[3]:
+        matrix_inputs()
+    with tabs[4]:
+        consolidation_inputs()
+    with tabs[5]:
+        export_inputs()
+
+
+if __name__ == "__main__":
+    main()
+
