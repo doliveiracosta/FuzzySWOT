@@ -55,7 +55,7 @@ def init_state() -> None:
         "last_pdf_path": "",
     }
     def init_state() -> None:
-    defaults = {
+        defaults = {
         "project": Project().to_dict(),
         "evaluators": [],
         "strengths": ["Marca reconhecida", "Equipe experiente", "Base de clientes ativa"],
