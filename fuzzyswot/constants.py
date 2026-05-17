@@ -2,7 +2,7 @@
 
 APP_NAME = "FuzzySWOT Strategy Prioritizer"
 APP_OWNER = "David de Oliveira Costa"
-APP_OWNER_LABEL = f"Proprietario: {APP_OWNER}"
+APP_OWNER_LABEL = f"Desenvolvido por {APP_OWNER}"
 
 FUZZY_SCALE = {
     0.0: "Falso / nenhuma relacao",
