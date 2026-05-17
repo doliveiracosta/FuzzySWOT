@@ -20,6 +20,7 @@ def write_pdf_report(
     opportunities: list[str],
     threats: list[str],
     rankings: dict[str, pd.DataFrame],
+    consensus: dict[str, dict[str, pd.DataFrame]] | None = None,
     tows_strategies: pd.DataFrame,
 ) -> None:
     """Write a concise consultative PDF report."""
@@ -91,7 +92,76 @@ def write_pdf_report(
     else:
         story.append(paragraph("Nenhum ranking gerado."))
 
-    story.append(paragraph("3. Estrategias TOWS", "Heading1"))
+    story.append(paragraph("3. Alinhamento estrategico entre avaliadores", "Heading1"))
+    story.append(
+        paragraph(
+            "Esta secao compara os julgamentos dos avaliadores. Quanto menor a amplitude, maior o alinhamento "
+            "entre pessoas ou areas. A amplitude representa a diferenca entre a maior e a menor nota atribuida "
+            "ao mesmo relacionamento fuzzy."
+        )
+    )
+    story.append(Spacer(1, 6))
+
+    if consensus:
+        for matrix_name, indicators in consensus.items():
+            amplitude_df = indicators.get("amplitude")
+            alert_df = indicators.get("alerta")
+            if amplitude_df is None or alert_df is None or amplitude_df.empty:
+                continue
+
+            total_cells = int(amplitude_df.size)
+            divergent_mask = alert_df.astype(str) == "Alta divergencia"
+            divergent_cells = int(divergent_mask.values.sum())
+            convergent_cells = total_cells - divergent_cells
+            convergence_rate = (convergent_cells / total_cells * 100) if total_cells else 0.0
+            mean_amplitude = float(amplitude_df.astype(float).values.mean()) if total_cells else 0.0
+            max_amplitude = float(amplitude_df.astype(float).values.max()) if total_cells else 0.0
+
+            story.append(paragraph(matrix_name, "Heading2"))
+            story.append(
+                table(
+                    [
+                        ["Indicador", "Valor", "Interpretacao"],
+                        ["Convergencia geral", f"{convergence_rate:.1f}%", "Percentual de relacionamentos sem alta divergencia."],
+                        ["Amplitude media", f"{mean_amplitude:.3f}", "Diferenca media entre maior e menor julgamento."],
+                        ["Maior amplitude", f"{max_amplitude:.3f}", "Ponto de maior desalinhamento entre avaliadores."],
+                        ["Pontos divergentes", str(divergent_cells), "Quantidade de cruzamentos marcados como alta divergencia."],
+                    ],
+                    [4.2 * cm, 3.0 * cm, 8.5 * cm],
+                )
+            )
+            story.append(Spacer(1, 6))
+
+            divergent_rows = []
+            for row_label in amplitude_df.index:
+                for column_label in amplitude_df.columns:
+                    if str(alert_df.loc[row_label, column_label]) == "Alta divergencia":
+                        divergent_rows.append(
+                            [
+                                str(row_label),
+                                str(column_label),
+                                f"{float(amplitude_df.loc[row_label, column_label]):.3f}",
+                                "Alta divergencia",
+                            ]
+                        )
+
+            if divergent_rows:
+                divergent_rows = sorted(divergent_rows, key=lambda item: float(item[2]), reverse=True)
+                story.append(paragraph("Principais pontos para alinhamento", "Heading3"))
+                story.append(
+                    table(
+                        [["Fator interno", "Fator externo", "Amplitude", "Status"]] + divergent_rows[:12],
+                        [4.6 * cm, 4.6 * cm, 2.4 * cm, 3.2 * cm],
+                    )
+                )
+                story.append(Spacer(1, 6))
+            else:
+                story.append(paragraph("Nao foram identificados pontos de alta divergencia nesta matriz."))
+                story.append(Spacer(1, 6))
+    else:
+        story.append(paragraph("Nenhum indicador de consenso foi gerado. Consolide a matriz antes de exportar o PDF."))
+
+    story.append(paragraph("4. Estrategias TOWS", "Heading1"))
     if not tows_strategies.empty:
         rows = [["Posicao", "Quadrante", "Fator interno", "Fator externo", "Prioridade"]]
         for _, row in tows_strategies.head(20).iterrows():
@@ -115,3 +185,4 @@ def pdf_bytes(**kwargs) -> bytes:
     buffer = BytesIO()
     write_pdf_report(buffer, **kwargs)
     return buffer.getvalue()
+
