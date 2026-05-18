@@ -1,7 +1,7 @@
 """Shared constants for Fuzzy SWOT analysis."""
 
 APP_NAME = "FuzzySWOT Strategy Prioritizer"
-APP_OWNER = "David de Oliveira Costa"
+APP_OWNER = "Desenvolvido por David de Oliveira Costa, Doutorando em Engenharia de Computação, 2026"
 APP_OWNER_LABEL = f"Desenvolvido por {APP_OWNER}"
 
 FUZZY_SCALE = {
