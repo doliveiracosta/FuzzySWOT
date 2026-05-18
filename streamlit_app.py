@@ -103,7 +103,7 @@ def render_opening_cover() -> None:
         )
 
     st.title(APP_NAME)
-    st.caption("Plataforma para priorizacao estrategica com logica fuzzy e matriz TOWS.")
+    st.caption("Plataforma para priorizacao estrategica com logica fuzzy e matriz SWOT.")
     st.markdown(f"**{APP_OWNER_LABEL}**")
 
     logo_orcid = Path("assets/logo_orcid.svg")
