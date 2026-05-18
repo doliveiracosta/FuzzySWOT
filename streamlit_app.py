@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import mimetypes
 import os
+from pathlib import Path
 from textwrap import dedent
 
 import pandas as pd
@@ -24,6 +27,103 @@ from fuzzyswot.models import Evaluator, Project
 PDF_FILE_NAME = "relatorio_consultivo_fuzzy_swot.pdf"
 PUBLIC_MODE_VALUES = {"public", "cloud", "production"}
 STEPS = ["Projeto", "Itens SWOT", "Avaliadores", "Matrizes", "Consolidacao", "Exportacao"]
+
+
+def asset_data_uri(path: Path) -> str:
+    mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def render_opening_cover() -> None:
+    st.markdown(
+        """
+        <style>
+        .institutional-logos {
+            display: flex;
+            align-items: center;
+            gap: 22px;
+            margin: 0.2rem 0 1.0rem;
+        }
+        .institutional-logos img {
+            object-fit: contain;
+            width: auto;
+            display: block;
+        }
+        .institutional-logos .logo-upe {
+            height: 52px;
+        }
+        .institutional-logos .logo-poli {
+            height: 54px;
+        }
+        .institutional-logos .logo-ppgec {
+            height: 48px;
+        }
+        .author-links {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            margin: 0.1rem 0 1.2rem;
+        }
+        .author-links a {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            color: #6b7280;
+            text-decoration: none;
+            font-size: 0.92rem;
+        }
+        .author-links a:hover {
+            color: #374151;
+            text-decoration: none;
+        }
+        .author-links img {
+            width: 18px;
+            height: 18px;
+            display: inline-block;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    logo_upe = Path("assets/logo_upe.jfif")
+    logo_poli = Path("assets/logo_upe_poli.png")
+    logo_ppgec = Path("assets/logo_ppgec.png")
+    if logo_upe.exists() and logo_poli.exists() and logo_ppgec.exists():
+        st.markdown(
+            f"""
+            <div class="institutional-logos">
+                <img class="logo-upe" src="{asset_data_uri(logo_upe)}" alt="UPE">
+                <img class="logo-poli" src="{asset_data_uri(logo_poli)}" alt="POLI">
+                <img class="logo-ppgec" src="{asset_data_uri(logo_ppgec)}" alt="PPGEC">
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.title(APP_NAME)
+    st.caption("Plataforma para priorizacao estrategica com logica fuzzy e matriz TOWS.")
+    st.markdown(f"**{APP_OWNER_LABEL}**")
+
+    logo_orcid = Path("assets/logo_orcid.svg")
+    logo_linkedin = Path("assets/logo_linkedin.svg")
+    if logo_orcid.exists() and logo_linkedin.exists():
+        st.markdown(
+            f"""
+            <div class="author-links">
+                <a href="https://orcid.org/0000-0002-6138-7451" target="_blank">
+                    <img src="{asset_data_uri(logo_orcid)}" alt="ORCID">
+                    <span>Perfil academico</span>
+                </a>
+                <a href="https://www.linkedin.com/in/daviddeoliveiracosta" target="_blank">
+                    <img src="{asset_data_uri(logo_linkedin)}" alt="LinkedIn">
+                    <span>Perfil profissional</span>
+                </a>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def public_deployment_enabled() -> bool:
@@ -423,9 +523,7 @@ def main() -> None:
     st.set_page_config(page_title=APP_NAME, layout="wide")
     init_state()
     public_mode = public_deployment_enabled()
-    st.title(APP_NAME)
-    st.markdown(f"**{APP_OWNER_LABEL}**")
-    st.caption("MVP web para priorizacao estrategica com logica fuzzy e matriz TOWS.")
+    render_opening_cover()
     if public_mode:
         st.info(
             "Esta versao publica nao possui login nem banco de dados. Evite inserir dados pessoais, "
