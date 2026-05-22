@@ -82,6 +82,32 @@ def render_opening_cover() -> None:
             height: 18px;
             display: inline-block;
         }
+        .usage-guide {
+            margin: 0.2rem 0 1.1rem;
+            color: #4b5563;
+            font-size: 0.94rem;
+        }
+        .usage-guide summary {
+            cursor: pointer;
+            color: #6b7280;
+            text-decoration: none;
+            width: fit-content;
+            list-style: none;
+        }
+        .usage-guide summary:hover {
+            color: #374151;
+        }
+        .usage-guide summary::-webkit-details-marker {
+            display: none;
+        }
+        .usage-guide ol {
+            margin: 0.75rem 0 0;
+            padding-left: 1.25rem;
+            line-height: 1.45;
+        }
+        .usage-guide li {
+            margin-bottom: 0.42rem;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -102,8 +128,27 @@ def render_opening_cover() -> None:
             unsafe_allow_html=True,
         )
 
+    st.markdown(
+        """
+        <details class="usage-guide">
+            <summary>Como utilizar a plataforma</summary>
+            <ol>
+                <li><strong>Preencha os dados do projeto:</strong> informe nome, organizacao, responsavel, modalidade de julgamento e descricao do contexto estrategico.</li>
+                <li><strong>Cadastre os itens SWOT:</strong> registre forcas, fraquezas, oportunidades e ameacas, usando um item por linha.</li>
+                <li><strong>Cadastre os avaliadores:</strong> informe nome, area e funcao hierarquica. O peso e definido automaticamente pela funcao.</li>
+                <li><strong>Preencha as matrizes fuzzy:</strong> selecione avaliador e matriz, atribuindo notas percentuais conforme a escala apresentada.</li>
+                <li><strong>Salve as avaliacoes:</strong> registre cada matriz preenchida. Quando todos os avaliadores concluirem, avance para a consolidacao.</li>
+                <li><strong>Consolide os julgamentos:</strong> escolha media ponderada pela funcao hierarquica ou media simples e defina o limite de divergencia.</li>
+                <li><strong>Analise os resultados:</strong> verifique matriz consolidada, ranking, estrategias TOWS e alertas de divergencia.</li>
+                <li><strong>Exporte o relatorio:</strong> baixe o PDF consultivo com os dados do projeto e os resultados consolidados.</li>
+            </ol>
+        </details>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.title(APP_NAME)
-    st.caption("Plataforma para priorizacao estrategica com logica fuzzy e matriz SWOT.")
+    st.caption("Plataforma para priorizacao estrategica com logica fuzzy e matriz TOWS.")
     st.markdown(f"**{APP_OWNER_LABEL}**")
 
     logo_orcid = Path("assets/logo_orcid.svg")
