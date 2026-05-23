@@ -25,6 +25,7 @@ def write_pdf_report(
     consensus: dict[str, dict[str, pd.DataFrame]] | None = None,
     divergence_rate_threshold: float = 25.0,
     tows_strategies: pd.DataFrame,
+    strategic_profile: pd.DataFrame | None = None,
 ) -> None:
     """Write a concise consultative PDF report."""
 
@@ -246,7 +247,42 @@ def write_pdf_report(
     else:
         story.append(paragraph("Nenhum indicador de consenso foi gerado. Consolide a matriz antes de exportar o PDF."))
 
-    story.append(paragraph("4. Estrategias TOWS", "Heading1"))
+    story.append(paragraph("4. Diagnostico estrategico TOWS", "Heading1"))
+    if strategic_profile is not None and not strategic_profile.empty:
+        dominant = strategic_profile.iloc[0]
+        story.append(
+            interpretation_table(
+                [
+                    ["Perfil predominante", "Leitura executiva"],
+                    [
+                        f"{dominant.get('perfil_estrategico', '')} "
+                        f"({float(dominant.get('participacao_percentual', 0.0)):.1f}%)",
+                        dominant.get("leitura_executiva", ""),
+                    ],
+                ],
+                [4.5 * cm, 11.2 * cm],
+                alert=str(dominant.get("quadrante", "")) == "WT",
+            )
+        )
+        story.append(Spacer(1, 6))
+        rows = [["Quadrante", "Perfil", "Participacao", "Prioridade media", "Status"]]
+        for _, row in strategic_profile.iterrows():
+            rows.append(
+                [
+                    row.get("quadrante", ""),
+                    row.get("perfil_estrategico", ""),
+                    f"{float(row.get('participacao_percentual', 0.0)):.1f}%",
+                    f"{float(row.get('prioridade_media', 0.0)):.3f}",
+                    row.get("status", ""),
+                ]
+            )
+        story.append(table(rows, [1.8 * cm, 4.6 * cm, 2.5 * cm, 2.7 * cm, 2.7 * cm]))
+        story.append(Spacer(1, 10))
+    else:
+        story.append(paragraph("Nenhum diagnostico estrategico TOWS foi gerado."))
+        story.append(Spacer(1, 8))
+
+    story.append(paragraph("5. Estrategias TOWS", "Heading1"))
     if not tows_strategies.empty:
         rows = [["Posicao", "Quadrante", "Fator interno", "Fator externo", "Prioridade"]]
         for _, row in tows_strategies.head(20).iterrows():

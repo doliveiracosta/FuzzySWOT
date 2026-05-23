@@ -18,6 +18,7 @@ class ConsolidationResult:
     ranking: pd.DataFrame
     used_weights: pd.DataFrame
     tows_strategies: pd.DataFrame
+    strategic_profile: pd.DataFrame
 
 
 def _rounded_scale_value(value: float) -> float:
@@ -235,6 +236,76 @@ def generate_tows_strategies(
     return strategies
 
 
+def strategic_profile_from_tows(tows_strategies: pd.DataFrame) -> pd.DataFrame:
+    """Summarize TOWS strategies into an executive strategic posture."""
+
+    if tows_strategies.empty:
+        return pd.DataFrame()
+
+    quadrant_labels = {
+        "SO": {
+            "perfil_estrategico": "Ofensivo / crescimento",
+            "leitura_executiva": (
+                "Predominam relacoes entre forcas e oportunidades. A leitura sugere postura de crescimento, "
+                "expansao, alavancagem de capacidades internas e captura ativa de oportunidades externas."
+            ),
+        },
+        "ST": {
+            "perfil_estrategico": "Defensivo / conservador",
+            "leitura_executiva": (
+                "Predominam relacoes entre forcas e ameacas. A leitura sugere postura conservadora, com uso "
+                "das capacidades internas para proteger o negocio, reduzir riscos e preservar posicao competitiva."
+            ),
+        },
+        "WO": {
+            "perfil_estrategico": "Reorientacao / adaptativo",
+            "leitura_executiva": (
+                "Predominam relacoes entre fraquezas e oportunidades. A leitura sugere necessidade de melhoria, "
+                "capacitacao ou reorientacao interna para aproveitar oportunidades externas."
+            ),
+        },
+        "WT": {
+            "perfil_estrategico": "Reativo / sobrevivencia",
+            "leitura_executiva": (
+                "Predominam relacoes entre fraquezas e ameacas. A leitura sugere postura reativa, com foco em "
+                "contencao, reducao de vulnerabilidades e protecao contra perdas."
+            ),
+        },
+    }
+
+    records: list[dict[str, str | float | int]] = []
+    total_intensity = float(tows_strategies["prioridade_fuzzy"].sum())
+    grouped = tows_strategies.groupby("quadrante", sort=False)
+
+    for quadrant in ["SO", "ST", "WO", "WT"]:
+        subset = grouped.get_group(quadrant) if quadrant in grouped.groups else pd.DataFrame()
+        intensity = float(subset["prioridade_fuzzy"].sum()) if not subset.empty else 0.0
+        share = (100.0 * intensity / total_intensity) if total_intensity > 0 else 0.0
+        mean_priority = float(subset["prioridade_fuzzy"].mean()) if not subset.empty else 0.0
+        max_priority = float(subset["prioridade_fuzzy"].max()) if not subset.empty else 0.0
+        records.append(
+            {
+                "quadrante": quadrant,
+                "perfil_estrategico": quadrant_labels[quadrant]["perfil_estrategico"],
+                "intensidade_total": round(intensity, 4),
+                "participacao_percentual": round(share, 2),
+                "prioridade_media": round(mean_priority, 4),
+                "maior_prioridade": round(max_priority, 4),
+                "quantidade_estrategias": int(len(subset)),
+                "leitura_executiva": quadrant_labels[quadrant]["leitura_executiva"],
+            }
+        )
+
+    profile = pd.DataFrame(records)
+    profile = profile.sort_values(
+        ["intensidade_total", "maior_prioridade", "prioridade_media"],
+        ascending=[False, False, False],
+    ).reset_index(drop=True)
+    profile.insert(0, "posicao", range(1, len(profile) + 1))
+    profile["status"] = ["Predominante" if index == 0 else "Secundario" for index in range(len(profile))]
+    return profile
+
+
 def consolidate_matrices(
     matrices_by_evaluator: Mapping[str, pd.DataFrame],
     evaluator_weights: Mapping[str, float],
@@ -269,6 +340,7 @@ def consolidate_matrices(
         if matrix_name == TOWS_MATRIX_NAME
         else pd.DataFrame()
     )
+    strategic_profile = strategic_profile_from_tows(tows) if matrix_name == TOWS_MATRIX_NAME else pd.DataFrame()
 
     return ConsolidationResult(
         consolidated=consolidated,
@@ -276,4 +348,5 @@ def consolidate_matrices(
         ranking=ranking,
         used_weights=pd.DataFrame(used_weights),
         tows_strategies=tows,
+        strategic_profile=strategic_profile,
     )
