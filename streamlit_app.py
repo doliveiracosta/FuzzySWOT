@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import math
 import mimetypes
 import os
 from pathlib import Path
@@ -196,6 +197,7 @@ def init_state() -> None:
         "consensus": {},
         "rankings": {},
         "tows_strategies": pd.DataFrame(),
+        "strategic_profile": pd.DataFrame(),
         "divergence_threshold_percent": 25,
         "current_step": 0,
         "notice": "",
@@ -305,6 +307,79 @@ def fuzzy_chip(value: float) -> str:
     return (
         f'<div class="fuzzy-chip" style="background:{fuzzy_color(rounded)}; color:{text_color};">'
         f"{rounded:.1f} - {fuzzy_label(rounded)}</div>"
+    )
+
+
+def render_strategic_radar(profile: pd.DataFrame) -> None:
+    if profile.empty:
+        return
+
+    values = {str(row["quadrante"]): float(row["participacao_percentual"]) for _, row in profile.iterrows()}
+    labels = {
+        "SO": "Ofensivo",
+        "ST": "Defensivo",
+        "WO": "Adaptativo",
+        "WT": "Reativo",
+    }
+    order = ["SO", "ST", "WT", "WO"]
+    center = 150
+    radius = 105
+    angles = [-90, 0, 90, 180]
+
+    def point(percent: float, angle_degrees: float) -> tuple[float, float]:
+        angle = math.radians(angle_degrees)
+        scaled = radius * max(0.0, min(percent, 100.0)) / 100.0
+        return center + scaled * math.cos(angle), center + scaled * math.sin(angle)
+
+    def axis_point(angle_degrees: float, scale: float = 1.0) -> tuple[float, float]:
+        angle = math.radians(angle_degrees)
+        return center + radius * scale * math.cos(angle), center + radius * scale * math.sin(angle)
+
+    polygon = " ".join(f"{x:.1f},{y:.1f}" for x, y in [point(values.get(q, 0.0), a) for q, a in zip(order, angles)])
+    axes = []
+    labels_svg = []
+    for quadrant, angle in zip(order, angles):
+        x, y = axis_point(angle)
+        lx, ly = axis_point(angle, 1.26)
+        anchor = "middle"
+        if angle == 0:
+            anchor = "start"
+        elif angle == 180:
+            anchor = "end"
+        axes.append(f'<line x1="{center}" y1="{center}" x2="{x:.1f}" y2="{y:.1f}" stroke="#d1d5db" stroke-width="1"/>')
+        labels_svg.append(
+            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" dominant-baseline="middle" '
+            f'font-size="12" fill="#374151">{quadrant} - {labels[quadrant]} ({values.get(quadrant, 0.0):.1f}%)</text>'
+        )
+
+    rings = []
+    for pct in [25, 50, 75, 100]:
+        r = radius * pct / 100
+        rings.append(f'<circle cx="{center}" cy="{center}" r="{r:.1f}" fill="none" stroke="#e5e7eb" stroke-width="1"/>')
+
+    dominant = profile.iloc[0]
+    st.markdown(
+        f"""
+        <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap; margin:0.4rem 0 1rem;">
+            <svg width="360" height="330" viewBox="0 0 360 330" role="img" aria-label="Radar estrategico TOWS">
+                {''.join(rings)}
+                {''.join(axes)}
+                <polygon points="{polygon}" fill="#ef4444" fill-opacity="0.25" stroke="#ef4444" stroke-width="3"/>
+                <circle cx="{center}" cy="{center}" r="3" fill="#111827"/>
+                {''.join(labels_svg)}
+            </svg>
+            <div style="max-width:620px;">
+                <div style="font-size:0.86rem; color:#6b7280;">Perfil estrategico predominante</div>
+                <div style="font-size:1.35rem; font-weight:700; color:#111827; margin:0.15rem 0 0.45rem;">
+                    {dominant["perfil_estrategico"]} ({float(dominant["participacao_percentual"]):.1f}%)
+                </div>
+                <div style="font-size:0.95rem; line-height:1.45; color:#374151;">
+                    {dominant["leitura_executiva"]}
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 
@@ -517,6 +592,7 @@ def consolidation_inputs() -> None:
         st.session_state.divergence_threshold_percent = int(divergence_threshold_percent)
         if matrix_name == TOWS_MATRIX_NAME:
             st.session_state.tows_strategies = result.tows_strategies
+            st.session_state.strategic_profile = result.strategic_profile
         go_next("Consolidacao realizada. Avancamos para Exportacao.")
 
     if matrix_name in st.session_state.consolidated:
@@ -531,6 +607,10 @@ def consolidation_inputs() -> None:
         st.dataframe(st.session_state.rankings[matrix_name], use_container_width=True)
         st.markdown("#### Alerta de divergencia")
         st.dataframe(st.session_state.consensus[matrix_name]["alerta"], use_container_width=True)
+        if matrix_name == TOWS_MATRIX_NAME and not st.session_state.strategic_profile.empty:
+            st.markdown("#### Diagnostico estrategico TOWS")
+            render_strategic_radar(st.session_state.strategic_profile)
+            st.dataframe(st.session_state.strategic_profile, use_container_width=True, hide_index=True)
         if matrix_name == TOWS_MATRIX_NAME and not st.session_state.tows_strategies.empty:
             st.markdown("#### Estrategias TOWS")
             st.dataframe(st.session_state.tows_strategies, use_container_width=True)
@@ -550,6 +630,7 @@ def export_inputs() -> None:
         consensus=st.session_state.consensus,
         divergence_rate_threshold=float(st.session_state.divergence_threshold_percent),
         tows_strategies=st.session_state.tows_strategies,
+        strategic_profile=st.session_state.strategic_profile,
     )
 
     if public_mode:
