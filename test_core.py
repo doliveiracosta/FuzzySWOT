@@ -8,7 +8,9 @@ from fuzzyswot.core import (
     consolidate_matrices,
     default_matrix,
     generate_tows_strategies,
+    kendall_w_from_matrices,
     ranking_from_matrix,
+    spearman_between_matrices,
     strategic_profile_from_tows,
     weighted_average_matrices,
 )
@@ -83,7 +85,33 @@ class CoreTests(unittest.TestCase):
 
         self.assertEqual(len(result.tows_strategies), 4)
         self.assertFalse(result.strategic_profile.empty)
+        self.assertFalse(result.statistical_confidence.empty)
         self.assertEqual(result.ranking.iloc[0]["elemento"], "Forca 1")
+
+    def test_statistical_confidence_metrics(self):
+        first = pd.DataFrame([[0.9, 0.8], [0.2, 0.3]], index=["A", "B"], columns=["X", "Y"])
+        second = pd.DataFrame([[0.8, 0.7], [0.3, 0.2]], index=["A", "B"], columns=["X", "Y"])
+
+        self.assertAlmostEqual(kendall_w_from_matrices([first, second]), 1.0)
+        self.assertAlmostEqual(spearman_between_matrices(first, second), 1.0)
+
+    def test_statistical_confidence_has_classification(self):
+        rows = ["A", "B"]
+        cols = ["X", "Y"]
+        first = pd.DataFrame([[0.9, 0.8], [0.2, 0.3]], index=rows, columns=cols)
+        second = pd.DataFrame([[0.8, 0.7], [0.3, 0.2]], index=rows, columns=cols)
+        result = consolidate_matrices(
+            {"Ana": first, "Bruno": second},
+            {"Ana": 0.8, "Bruno": 0.5},
+            TOWS_MATRIX_NAME,
+            strengths=["A"],
+            weaknesses=["B"],
+            opportunities=["X"],
+            threats=["Y"],
+        )
+
+        self.assertIn("classificacao", result.statistical_confidence.columns)
+        self.assertTrue(result.statistical_confidence["classificacao"].astype(str).str.len().gt(0).all())
 
     def test_strategic_profile_identifies_dominant_quadrant(self):
         strategies = pd.DataFrame(
@@ -127,6 +155,7 @@ class CoreTests(unittest.TestCase):
             threats=["Ameaca 1"],
             rankings={TOWS_MATRIX_NAME: ranking},
             consensus=consensus,
+            statistical_confidence={},
             divergence_rate_threshold=10.0,
             tows_strategies=pd.DataFrame(),
             strategic_profile=pd.DataFrame(),
