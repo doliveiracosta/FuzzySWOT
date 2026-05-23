@@ -21,6 +21,7 @@ from fuzzyswot.core import (
     fuzzy_label,
     matrix_definitions,
     normalize_items,
+    strategic_profile_from_tows,
 )
 from fuzzyswot.exports import pdf_bytes
 from fuzzyswot.models import Evaluator, Project
@@ -592,7 +593,11 @@ def consolidation_inputs() -> None:
         st.session_state.divergence_threshold_percent = int(divergence_threshold_percent)
         if matrix_name == TOWS_MATRIX_NAME:
             st.session_state.tows_strategies = result.tows_strategies
-            st.session_state.strategic_profile = result.strategic_profile
+            st.session_state.strategic_profile = getattr(
+                result,
+                "strategic_profile",
+                strategic_profile_from_tows(result.tows_strategies),
+            )
         go_next("Consolidacao realizada. Avancamos para Exportacao.")
 
     if matrix_name in st.session_state.consolidated:
