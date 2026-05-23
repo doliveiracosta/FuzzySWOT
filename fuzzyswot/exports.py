@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from io import BytesIO
 from typing import BinaryIO
@@ -33,18 +34,27 @@ def write_pdf_report(
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib.units import cm
+    from reportlab.graphics.shapes import Circle, Drawing, Line, Polygon, String
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     styles = getSampleStyleSheet()
     doc = SimpleDocTemplate(output, pagesize=A4, rightMargin=1.5 * cm, leftMargin=1.5 * cm)
     story = []
+    table_width = 15.7 * cm
 
     def paragraph(text: str, style: str = "Normal") -> Paragraph:
         return Paragraph(escape(str(text)), styles[style])
 
+    def fit_widths(widths: list[float]) -> list[float]:
+        total = sum(widths)
+        if total <= 0:
+            return widths
+        return [width * table_width / total for width in widths]
+
     def table(rows: list[list[object]], widths: list[float]) -> Table:
         wrapped_rows = [[paragraph(value, "Normal") for value in row] for row in rows]
-        t = Table(wrapped_rows, colWidths=widths, repeatRows=1)
+        t = Table(wrapped_rows, colWidths=fit_widths(widths), repeatRows=1)
+        t.hAlign = "CENTER"
         t.setStyle(
             TableStyle(
                 [
@@ -54,6 +64,8 @@ def write_pdf_report(
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                     ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
                 ]
             )
         )
@@ -69,7 +81,8 @@ def write_pdf_report(
 
     def interpretation_table(rows: list[list[object]], widths: list[float], alert: bool = False) -> Table:
         wrapped_rows = [[paragraph(value, "Normal") for value in row] for row in rows]
-        t = Table(wrapped_rows, colWidths=widths, repeatRows=1)
+        t = Table(wrapped_rows, colWidths=fit_widths(widths), repeatRows=1)
+        t.hAlign = "CENTER"
         body_background = colors.HexColor("#ffebee") if alert else colors.white
         t.setStyle(
             TableStyle(
@@ -81,10 +94,141 @@ def write_pdf_report(
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                     ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
                 ]
             )
         )
         return t
+
+    def strategic_conclusion(profile: pd.DataFrame | None) -> str:
+        if profile is None or profile.empty:
+            return (
+                "Nao foi possivel produzir uma conclusao estrategica automatica, pois a matriz TOWS ainda "
+                "nao foi consolidada ou nao ha estrategias suficientes para interpretar o perfil predominante."
+            )
+
+        dominant = profile.iloc[0]
+        second = profile.iloc[1] if len(profile) > 1 else None
+        dominant_profile = str(dominant.get("perfil_estrategico", ""))
+        dominant_share = float(dominant.get("participacao_percentual", 0.0))
+        dominant_text = str(dominant.get("leitura_executiva", ""))
+        second_text = ""
+        if second is not None:
+            second_text = (
+                f" Como perfil secundario, observa-se {second.get('perfil_estrategico', '')} "
+                f"({float(second.get('participacao_percentual', 0.0)):.1f}%), indicando uma dimensao complementar "
+                "que tambem deve ser considerada no plano de acao."
+            )
+
+        recommendation = (
+            " Recomenda-se priorizar as estrategias com maior prioridade fuzzy, discutir os pontos de alta "
+            "divergencia entre avaliadores e converter as relacoes mais fortes em iniciativas com responsaveis, "
+            "prazos e indicadores de acompanhamento."
+        )
+        return (
+            f"A consolidacao dos julgamentos indica predominancia do perfil {dominant_profile}, com "
+            f"{dominant_share:.1f}% da intensidade estrategica consolidada. {dominant_text}{second_text}{recommendation}"
+        )
+
+    def radar_drawing(profile: pd.DataFrame) -> Drawing:
+        values = {str(row["quadrante"]): float(row["participacao_percentual"]) for _, row in profile.iterrows()}
+        labels = {
+            "SO": "SO Ofensivo",
+            "ST": "ST Defensivo",
+            "WT": "WT Reativo",
+            "WO": "WO Adaptativo",
+        }
+        order = ["SO", "ST", "WT", "WO"]
+        angles = [-90, 0, 90, 180]
+        width = table_width
+        height = 7.0 * cm
+        cx = 3.4 * cm
+        cy = 3.35 * cm
+        radius = 2.25 * cm
+        drawing = Drawing(width, height)
+
+        for pct in [25, 50, 75, 100]:
+            drawing.add(Circle(cx, cy, radius * pct / 100, strokeColor=colors.HexColor("#d1d5db"), fillColor=None))
+
+        points: list[float] = []
+        for quadrant, angle in zip(order, angles):
+            radians = math.radians(angle)
+            axis_x = cx + radius * math.cos(radians)
+            axis_y = cy - radius * math.sin(radians)
+            drawing.add(Line(cx, cy, axis_x, axis_y, strokeColor=colors.HexColor("#d1d5db")))
+
+            value = max(0.0, min(values.get(quadrant, 0.0), 100.0))
+            scaled = radius * value / 100
+            points.extend([cx + scaled * math.cos(radians), cy - scaled * math.sin(radians)])
+
+            label_x = cx + radius * 1.2 * math.cos(radians)
+            label_y = cy - radius * 1.2 * math.sin(radians)
+            drawing.add(
+                String(
+                    label_x,
+                    label_y,
+                    f"{labels[quadrant]} ({value:.1f}%)",
+                    fontName="Helvetica",
+                    fontSize=8,
+                    fillColor=colors.HexColor("#424242"),
+                    textAnchor="middle",
+                )
+            )
+
+        drawing.add(
+            Polygon(
+                points,
+                strokeColor=colors.HexColor("#d32f2f"),
+                fillColor=colors.Color(0.95, 0.25, 0.25, alpha=0.25),
+                strokeWidth=2,
+            )
+        )
+        drawing.add(Circle(cx, cy, 2.5, strokeColor=colors.HexColor("#111827"), fillColor=colors.HexColor("#111827")))
+
+        dominant = profile.iloc[0]
+        drawing.add(String(7.2 * cm, 5.5 * cm, "Perfil predominante", fontName="Helvetica", fontSize=9, fillColor=colors.HexColor("#666666")))
+        drawing.add(
+            String(
+                7.2 * cm,
+                5.05 * cm,
+                str(dominant.get("perfil_estrategico", ""))[:42],
+                fontName="Helvetica-Bold",
+                fontSize=12,
+                fillColor=colors.HexColor("#111827"),
+            )
+        )
+        drawing.add(
+            String(
+                7.2 * cm,
+                4.55 * cm,
+                f"Participacao: {float(dominant.get('participacao_percentual', 0.0)):.1f}%",
+                fontName="Helvetica",
+                fontSize=10,
+                fillColor=colors.HexColor("#424242"),
+            )
+        )
+        drawing.add(
+            String(
+                7.2 * cm,
+                4.15 * cm,
+                f"Prioridade media: {float(dominant.get('prioridade_media', 0.0)):.3f}",
+                fontName="Helvetica",
+                fontSize=10,
+                fillColor=colors.HexColor("#424242"),
+            )
+        )
+        drawing.add(
+            String(
+                7.2 * cm,
+                3.75 * cm,
+                f"Maior prioridade: {float(dominant.get('maior_prioridade', 0.0)):.3f}",
+                fontName="Helvetica",
+                fontSize=10,
+                fillColor=colors.HexColor("#424242"),
+            )
+        )
+        return drawing
 
     story.append(paragraph(APP_NAME, "Title"))
     story.append(paragraph("Relatorio consultivo de priorizacao estrategica por logica fuzzy", "Heading2"))
@@ -250,6 +394,8 @@ def write_pdf_report(
     story.append(paragraph("4. Diagnostico estrategico TOWS", "Heading1"))
     if strategic_profile is not None and not strategic_profile.empty:
         dominant = strategic_profile.iloc[0]
+        story.append(radar_drawing(strategic_profile))
+        story.append(Spacer(1, 6))
         story.append(
             interpretation_table(
                 [
@@ -265,18 +411,17 @@ def write_pdf_report(
             )
         )
         story.append(Spacer(1, 6))
-        rows = [["Quadrante", "Perfil", "Participacao", "Prioridade media", "Status"]]
+        rows = [["Quadrante", "Perfil", "Participacao", "Status"]]
         for _, row in strategic_profile.iterrows():
             rows.append(
                 [
                     row.get("quadrante", ""),
                     row.get("perfil_estrategico", ""),
                     f"{float(row.get('participacao_percentual', 0.0)):.1f}%",
-                    f"{float(row.get('prioridade_media', 0.0)):.3f}",
                     row.get("status", ""),
                 ]
             )
-        story.append(table(rows, [1.8 * cm, 4.6 * cm, 2.5 * cm, 2.7 * cm, 2.7 * cm]))
+        story.append(table(rows, [2.0 * cm, 7.0 * cm, 3.0 * cm, 3.7 * cm]))
         story.append(Spacer(1, 10))
     else:
         story.append(paragraph("Nenhum diagnostico estrategico TOWS foi gerado."))
@@ -298,6 +443,10 @@ def write_pdf_report(
         story.append(table(rows, [1.5 * cm, 1.8 * cm, 4.8 * cm, 4.8 * cm, 2.2 * cm]))
     else:
         story.append(paragraph("Nenhuma estrategia TOWS gerada."))
+
+    story.append(Spacer(1, 12))
+    story.append(paragraph("6. Conclusao consultiva", "Heading1"))
+    story.append(paragraph(strategic_conclusion(strategic_profile)))
 
     doc.build(story)
 
