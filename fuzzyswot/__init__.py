@@ -8,6 +8,7 @@ from .core import (
     generate_tows_strategies,
     matrix_definitions,
     ranking_from_matrix,
+    statistical_confidence_indicators,
     strategic_profile_from_tows,
     weighted_average_matrices,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "generate_tows_strategies",
     "matrix_definitions",
     "ranking_from_matrix",
+    "statistical_confidence_indicators",
     "strategic_profile_from_tows",
     "weighted_average_matrices",
 ]

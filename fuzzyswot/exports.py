@@ -24,6 +24,7 @@ def write_pdf_report(
     threats: list[str],
     rankings: dict[str, pd.DataFrame],
     consensus: dict[str, dict[str, pd.DataFrame]] | None = None,
+    statistical_confidence: dict[str, pd.DataFrame] | None = None,
     divergence_rate_threshold: float = 25.0,
     tows_strategies: pd.DataFrame,
     strategic_profile: pd.DataFrame | None = None,
@@ -391,7 +392,29 @@ def write_pdf_report(
     else:
         story.append(paragraph("Nenhum indicador de consenso foi gerado. Consolide a matriz antes de exportar o PDF."))
 
-    story.append(paragraph("4. Diagnostico estrategico TOWS", "Heading1"))
+    story.append(paragraph("4. Bloco estatistico de confianca", "Heading1"))
+    if statistical_confidence:
+        for matrix_name, confidence_df in statistical_confidence.items():
+            if confidence_df is None or confidence_df.empty:
+                continue
+            story.append(paragraph(matrix_name, "Heading2"))
+            rows = [["Indicador", "Valor", "Classificacao", "Leitura"]]
+            for _, row in confidence_df.iterrows():
+                rows.append(
+                    [
+                        row.get("indicador", ""),
+                        row.get("valor", ""),
+                        row.get("classificacao", ""),
+                        row.get("leitura", ""),
+                    ]
+                )
+            story.append(table(rows, [3.5 * cm, 2.4 * cm, 3.0 * cm, 6.8 * cm]))
+            story.append(Spacer(1, 8))
+    else:
+        story.append(paragraph("Nenhum bloco estatistico de confianca foi gerado."))
+        story.append(Spacer(1, 8))
+
+    story.append(paragraph("5. Diagnostico estrategico TOWS", "Heading1"))
     if strategic_profile is not None and not strategic_profile.empty:
         dominant = strategic_profile.iloc[0]
         story.append(radar_drawing(strategic_profile))
@@ -427,7 +450,7 @@ def write_pdf_report(
         story.append(paragraph("Nenhum diagnostico estrategico TOWS foi gerado."))
         story.append(Spacer(1, 8))
 
-    story.append(paragraph("5. Estrategias TOWS", "Heading1"))
+    story.append(paragraph("6. Estrategias TOWS", "Heading1"))
     if not tows_strategies.empty:
         rows = [["Posicao", "Quadrante", "Fator interno", "Fator externo", "Prioridade"]]
         for _, row in tows_strategies.head(20).iterrows():
@@ -445,7 +468,7 @@ def write_pdf_report(
         story.append(paragraph("Nenhuma estrategia TOWS gerada."))
 
     story.append(Spacer(1, 12))
-    story.append(paragraph("6. Conclusao consultiva", "Heading1"))
+    story.append(paragraph("7. Conclusao consultiva", "Heading1"))
     story.append(paragraph(strategic_conclusion(strategic_profile)))
 
     doc.build(story)

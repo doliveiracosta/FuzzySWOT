@@ -19,6 +19,7 @@ class ConsolidationResult:
     used_weights: pd.DataFrame
     tows_strategies: pd.DataFrame
     strategic_profile: pd.DataFrame
+    statistical_confidence: pd.DataFrame
 
 
 def _rounded_scale_value(value: float) -> float:
@@ -152,6 +153,202 @@ def ranking_from_matrix(matrix: pd.DataFrame) -> pd.DataFrame:
     ranking.columns = ["elemento", "prioridade_fuzzy"]
     ranking.insert(0, "posicao", range(1, len(ranking) + 1))
     return ranking
+
+
+def _rank_vector_from_matrix(matrix: pd.DataFrame) -> pd.Series:
+    numeric = validate_fuzzy_matrix(matrix)
+    priorities = numeric.mean(axis=1)
+    return priorities.rank(ascending=False, method="average")
+
+
+def spearman_between_matrices(first: pd.DataFrame, second: pd.DataFrame) -> float:
+    """Calculate Spearman correlation between row rankings of two matrices."""
+
+    first_ranks = _rank_vector_from_matrix(first)
+    second_ranks = _rank_vector_from_matrix(second)
+    common = [item for item in first_ranks.index if item in second_ranks.index]
+    if len(common) < 2:
+        return 1.0
+
+    x = first_ranks.loc[common].astype(float)
+    y = second_ranks.loc[common].astype(float)
+    x_std = float(x.std(ddof=0))
+    y_std = float(y.std(ddof=0))
+    if x_std == 0.0 or y_std == 0.0:
+        return 1.0 if x.equals(y) else 0.0
+    return round(float(x.corr(y)), 4)
+
+
+def kendall_w_from_matrices(matrices: Sequence[pd.DataFrame]) -> float:
+    """Calculate Kendall's W for agreement among evaluator row rankings."""
+
+    numeric = _validate_compatible_matrices(matrices)
+    if len(numeric) < 2 or numeric[0].shape[0] < 2:
+        return 1.0
+
+    rank_rows = [_rank_vector_from_matrix(matrix) for matrix in numeric]
+    ranks = pd.DataFrame(rank_rows)
+    rank_sums = ranks.sum(axis=0)
+    mean_rank_sum = float(rank_sums.mean())
+    s_value = float(((rank_sums - mean_rank_sum) ** 2).sum())
+    evaluators = len(numeric)
+    items = numeric[0].shape[0]
+    denominator = (evaluators**2) * (items**3 - items)
+    if denominator == 0:
+        return 1.0
+    return round(float(12 * s_value / denominator), 4)
+
+
+def sensitivity_to_evaluator_weights(
+    matrices: Sequence[pd.DataFrame],
+    weights: Sequence[float],
+    iterations: int = 100,
+    variation: float = 0.2,
+) -> dict[str, float | str]:
+    """Estimate ranking robustness under deterministic perturbations of evaluator weights."""
+
+    numeric = _validate_compatible_matrices(matrices)
+    numeric_weights = np.asarray(weights, dtype=float)
+    if len(numeric) < 2:
+        return {
+            "top1_stability_percent": 100.0,
+            "mean_spearman": 1.0,
+            "min_spearman": 1.0,
+            "baseline_top1": ranking_from_matrix(weighted_average_matrices(numeric, numeric_weights)).iloc[0]["elemento"],
+        }
+
+    baseline = weighted_average_matrices(numeric, numeric_weights)
+    baseline_ranking = ranking_from_matrix(baseline)
+    baseline_top1 = str(baseline_ranking.iloc[0]["elemento"])
+
+    top1_matches = 0
+    spearman_values: list[float] = []
+    for iteration in range(iterations):
+        factors = []
+        for index in range(len(numeric_weights)):
+            raw = ((iteration + 1) * (index + 3) * 37) % 1000
+            unit = raw / 999.0
+            factors.append(1 - variation + (2 * variation * unit))
+        perturbed_weights = numeric_weights * np.asarray(factors, dtype=float)
+        perturbed = weighted_average_matrices(numeric, perturbed_weights)
+        perturbed_ranking = ranking_from_matrix(perturbed)
+        if str(perturbed_ranking.iloc[0]["elemento"]) == baseline_top1:
+            top1_matches += 1
+        spearman_values.append(spearman_between_matrices(baseline, perturbed))
+
+    return {
+        "top1_stability_percent": round(100.0 * top1_matches / iterations, 2),
+        "mean_spearman": round(float(np.mean(spearman_values)), 4),
+        "min_spearman": round(float(np.min(spearman_values)), 4),
+        "baseline_top1": baseline_top1,
+    }
+
+
+def _percent_level(value: float, *, inverse: bool = False) -> str:
+    if inverse:
+        if value <= 10:
+            return "Baixo"
+        if value <= 25:
+            return "Moderado"
+        return "Alto"
+    if value >= 90:
+        return "Alto"
+    if value >= 70:
+        return "Moderado"
+    return "Baixo"
+
+
+def _correlation_level(value: float) -> str:
+    if value >= 0.90:
+        return "Muito alto"
+    if value >= 0.70:
+        return "Alto"
+    if value >= 0.40:
+        return "Moderado"
+    return "Baixo"
+
+
+def _kendall_level(value: float) -> str:
+    if value >= 0.80:
+        return "Alta concordancia"
+    if value >= 0.60:
+        return "Boa concordancia"
+    if value >= 0.30:
+        return "Concordancia moderada"
+    return "Baixa concordancia"
+
+
+def statistical_confidence_indicators(
+    matrices: Sequence[pd.DataFrame],
+    weights: Sequence[float],
+    consolidated: pd.DataFrame,
+    consensus: dict[str, pd.DataFrame],
+) -> pd.DataFrame:
+    """Return executive statistical confidence indicators after consolidation."""
+
+    numeric = _validate_compatible_matrices(matrices)
+    amplitude_df = consensus["amplitude"].astype(float)
+    alert_df = consensus["alerta"].astype(str)
+    total_cells = int(amplitude_df.size)
+    divergent_cells = int((alert_df == "Alta divergencia").values.sum())
+    convergence_rate = 100.0 * (total_cells - divergent_cells) / total_cells if total_cells else 0.0
+    divergence_rate = 100.0 * divergent_cells / total_cells if total_cells else 0.0
+    mean_divergence = float(amplitude_df.values.mean()) if total_cells else 0.0
+    max_divergence = float(amplitude_df.values.max()) if total_cells else 0.0
+    max_position = amplitude_df.stack().astype(float).idxmax() if total_cells else ("-", "-")
+    simple_consolidated = weighted_average_matrices(numeric, [1.0] * len(numeric))
+    spearman_simple_weighted = spearman_between_matrices(simple_consolidated, consolidated)
+    kendall_w = kendall_w_from_matrices(numeric)
+    sensitivity = sensitivity_to_evaluator_weights(numeric, weights)
+
+    rows = [
+        {
+            "indicador": "Consenso geral",
+            "valor": f"{convergence_rate:.1f}%",
+            "classificacao": _percent_level(convergence_rate),
+            "leitura": "Percentual de cruzamentos sem alta divergencia entre avaliadores.",
+        },
+        {
+            "indicador": "Divergencia geral",
+            "valor": f"{divergence_rate:.1f}%",
+            "classificacao": _percent_level(divergence_rate, inverse=True),
+            "leitura": "Percentual de cruzamentos marcados como alta divergencia.",
+        },
+        {
+            "indicador": "Divergencia media",
+            "valor": f"{mean_divergence:.3f}",
+            "classificacao": _percent_level(mean_divergence * 100, inverse=True),
+            "leitura": "Amplitude media entre maior e menor julgamento na escala fuzzy.",
+        },
+        {
+            "indicador": "Maior ponto de conflito",
+            "valor": f"{max_position[0]} x {max_position[1]} ({max_divergence:.3f})",
+            "classificacao": _percent_level(max_divergence * 100, inverse=True),
+            "leitura": "Relacionamento com maior diferenca entre avaliadores.",
+        },
+        {
+            "indicador": "Kendall W",
+            "valor": f"{kendall_w:.3f}",
+            "classificacao": _kendall_level(kendall_w),
+            "leitura": "Concordancia entre rankings dos avaliadores; quanto mais perto de 1, maior alinhamento.",
+        },
+        {
+            "indicador": "Spearman simples vs ponderado",
+            "valor": f"{spearman_simple_weighted:.3f}",
+            "classificacao": _correlation_level(spearman_simple_weighted),
+            "leitura": "Similaridade entre ranking por media simples e ranking ponderado por hierarquia.",
+        },
+        {
+            "indicador": "Sensibilidade dos pesos",
+            "valor": f"{sensitivity['top1_stability_percent']:.1f}% top-1",
+            "classificacao": _percent_level(float(sensitivity["top1_stability_percent"])),
+            "leitura": (
+                f"Estabilidade do primeiro colocado sob variacao de pesos; Spearman medio "
+                f"{float(sensitivity['mean_spearman']):.3f}."
+            ),
+        },
+    ]
+    return pd.DataFrame(rows)
 
 
 def _tows_category(
@@ -335,6 +532,7 @@ def consolidate_matrices(
     consolidated = weighted_average_matrices(matrices, weights)
     consensus = consensus_indicators(matrices, divergence_threshold=divergence_threshold)
     ranking = ranking_from_matrix(consolidated)
+    statistical_confidence = statistical_confidence_indicators(matrices, weights, consolidated, consensus)
     tows = (
         generate_tows_strategies(consolidated, strengths, weaknesses, opportunities, threats)
         if matrix_name == TOWS_MATRIX_NAME
@@ -349,4 +547,5 @@ def consolidate_matrices(
         used_weights=pd.DataFrame(used_weights),
         tows_strategies=tows,
         strategic_profile=strategic_profile,
+        statistical_confidence=statistical_confidence,
     )
