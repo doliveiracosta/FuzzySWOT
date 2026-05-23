@@ -59,8 +59,8 @@ def write_pdf_report(
         t.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#424242")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dbeafe")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#111827")),
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
@@ -88,8 +88,8 @@ def write_pdf_report(
         t.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#b71c1c" if alert else "#2e7d32")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fee2e2" if alert else "#dbeafe")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#111827")),
                     ("BACKGROUND", (0, 1), (-1, -1), body_background),
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
