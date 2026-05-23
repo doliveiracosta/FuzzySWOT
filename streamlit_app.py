@@ -199,6 +199,7 @@ def init_state() -> None:
         "rankings": {},
         "tows_strategies": pd.DataFrame(),
         "strategic_profile": pd.DataFrame(),
+        "statistical_confidence": {},
         "divergence_threshold_percent": 25,
         "current_step": 0,
         "notice": "",
@@ -590,6 +591,7 @@ def consolidation_inputs() -> None:
         st.session_state.consolidated[matrix_name] = result.consolidated
         st.session_state.consensus[matrix_name] = result.consensus
         st.session_state.rankings[matrix_name] = result.ranking
+        st.session_state.statistical_confidence[matrix_name] = result.statistical_confidence
         st.session_state.divergence_threshold_percent = int(divergence_threshold_percent)
         if matrix_name == TOWS_MATRIX_NAME:
             st.session_state.tows_strategies = result.tows_strategies
@@ -612,6 +614,9 @@ def consolidation_inputs() -> None:
         st.dataframe(st.session_state.rankings[matrix_name], use_container_width=True)
         st.markdown("#### Alerta de divergencia")
         st.dataframe(st.session_state.consensus[matrix_name]["alerta"], use_container_width=True)
+        if matrix_name in st.session_state.statistical_confidence:
+            st.markdown("#### Bloco estatistico de confianca")
+            st.dataframe(st.session_state.statistical_confidence[matrix_name], use_container_width=True, hide_index=True)
         if matrix_name == TOWS_MATRIX_NAME and not st.session_state.strategic_profile.empty:
             st.markdown("#### Diagnostico estrategico TOWS")
             render_strategic_radar(st.session_state.strategic_profile)
@@ -633,6 +638,7 @@ def export_inputs() -> None:
         threats=st.session_state.threats,
         rankings=st.session_state.rankings,
         consensus=st.session_state.consensus,
+        statistical_confidence=st.session_state.statistical_confidence,
         divergence_rate_threshold=float(st.session_state.divergence_threshold_percent),
         tows_strategies=st.session_state.tows_strategies,
         strategic_profile=st.session_state.strategic_profile,
